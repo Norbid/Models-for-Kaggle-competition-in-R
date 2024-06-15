@@ -1,0 +1,181 @@
+library(knitr)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(corrplot)
+library(caret)
+library(gridExtra)
+library(scales)
+library(Rmisc)
+library(ggrepel)
+library(randomForest)
+library(psych)
+library(xgboost)
+library(zoo)
+
+train <- read.csv2("house-prices-advanced-regression-techniques/train.csv", sep = ",", stringsAsFactors = F)
+test <- read.csv2("house-prices-advanced-regression-techniques/test.csv", sep = ",", stringsAsFactors = F)
+summary(train)
+dim(train)
+test_labels <- test$Id
+test$Id <- NULL
+train$Id <- NULL
+test$SalePrice <- NA
+combined <- rbind(train, test)
+dim(all)
+ggplot(combined, aes(x = SalePrice)) + geom_histogram(bins = 100)
+numericVars <- which(sapply(combined, is.numeric)) #numbers of numeric variables
+numericVarNames <- names(numericVars) #names of numeric variables
+combined_numVar <- combined[, numericVars] #dataframe with numeric variables only
+cor_numVar <- cor(train_numVar, use="pairwise.complete.obs") #correlations of numeric variables
+cor_sorted <- as.matrix(sort(cor_numVar[,'SalePrice'], decreasing = TRUE))
+corHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5))) #names of sorted variables
+cor_numVar <- cor_numVar[corHigh, corHigh]
+corrplot.mixed(cor_numVar)
+ggplot(combined, aes(x = factor(OverallQual), y = SalePrice)) + geom_boxplot() 
+ggplot(combined, aes(x = GrLivArea, y = SalePrice)) + geom_point() + geom_smooth(method = "lm", se = FALSE)
+outs <- boxplot.stats(combined$GrLivArea)$out #outliers
+potential_outs <- which(combined$GrLivArea %in% c(outs)) #outliers
+NAcols <- which(colSums(is.na(combined)) > 0) #columns with NA
+#Filling NA values
+combined$PoolQC[is.na(combined$PoolQC)] <- 'None'
+table(combined$PoolQC)
+subset(combined$PoolQC, combined$PoolQC != "None")
+combined$MiscFeature[is.na(combined$MiscFeature)] <- 'None'
+table(combined$FireplaceQu)
+combined$Alley[is.na(combined$Alley)] <- 'None'
+combined$Alley <- as.factor(combined$Alley)
+combined$Fence[is.na(combined$Fence)] <- 'None'
+combined$Fence <- as.factor(combined$Fence)
+combined$FireplaceQu[is.na(combined$FireplaceQu)] <- 'None'
+combined$FireplaceQu <- as.factor(combined$FireplaceQu)
+summary(combined$LotFrontage)
+combined$LotFrontage <- na.fill(combined$LotFrontage, 68)
+combined$LotShape <- as.factor(combined$LotShape)
+combined$LotConfig <- as.factor(combined$LotConfig)
+combined$GarageYrBlt[is.na(combined$GarageYrBlt)] <- combined$YearBuilt[is.na(combined$GarageYrBlt)]
+length(which(is.na(combined$GarageType) & is.na(combined$GarageFinish) & is.na(combined$GarageCond) & is.na(combined$GarageQual)))
+combined[!is.na(combined$GarageType) & is.na(combined$GarageFinish), c('GarageCars', 'GarageArea', 'GarageType', 'GarageCond', 'GarageQual', 'GarageFinish')]
+combined$GarageCond[2127] <- names(sort(table(combined$GarageCond), decreasing = TRUE))[1]
+combined$GarageQual[2127] <- names(sort(table(combined$GarageQual), decreasing = TRUE))[1]
+combined$GarageFinish[2127] <- names(sort(table(combined$GarageFinish), decreasing = TRUE))[1]
+combined$GarageCars[2577] <- 0
+combined$GarageArea[2577] <- 0
+combined$GarageType[2577] <- NA
+combined$GarageType[is.na(combined$GarageType)] <- 'No Garage'
+combined$GarageType <- as.factor(combined$GarageType)
+combined$GarageFinish[is.na(combined$GarageFinish)] <- 'None'
+combined$GarageFinish <- as.factor(combined$GarageFinish)
+combined$GarageQual[is.na(combined$GarageQual)] <- 'None'
+combined$GarageQual <- as.factor(combined$GarageQual)
+combined$GarageCond[is.na(combined$GarageCond)] <- 'None'
+combined$GarageCond <- as.factor(combined$GarageCond)
+length(which(is.na(combined$BsmtQual) & is.na(combined$BsmtCond) & is.na(combined$BsmtExposure) & is.na(combined$BsmtFinType1) & is.na(combined$BsmtFinType2))) #check if all 79 NAs are the same observations among the variables with 80+ NAs
+combined[!is.na(combined$BsmtFinType1) & (is.na(combined$BsmtCond)|is.na(combined$BsmtQual)|is.na(combined$BsmtExposure)|is.na(combined$BsmtFinType2)), c('BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2')]
+combined$BsmtFinType2[333] <- names(sort(table(combined$BsmtFinType2), decreasing = TRUE))[1]
+combined$BsmtExposure[c(949, 1488, 2349)] <- names(sort(table(combined$BsmtExposure), decreasing = TRUE))[1]
+combined$BsmtCond[c(2041, 2186, 2525)] <- names(sort(table(combined$BsmtCond), decreasing = TRUE))[1]
+combined$BsmtQual[c(2218, 2219)] <- names(sort(table(combined$BsmtQual), decreasing = TRUE))[1]
+combined$BsmtQual[is.na(combined$BsmtQual)] <- 'None'
+combined$BsmtQual<-as.factor(combined$BsmtQual)
+combined$BsmtCond[is.na(combined$BsmtCond)] <- 'None'
+combined$BsmtCond<-as.factor(combined$BsmtCond)
+combined$BsmtExposure[is.na(combined$BsmtExposure)] <- 'None'
+combined$BsmtExposure<-as.factor(combined$BsmtExposure)
+combined$BsmtFinType1[is.na(combined$BsmtFinType1)] <- 'None'
+combined$BsmtFinType1<-as.factor(combined$BsmtFinType1)
+combined$BsmtFinType2[is.na(combined$BsmtFinType2)] <- 'None'
+combined$BsmtFinType2<-as.factor(combined$BsmtFinType2)
+combined[(is.na(combined$BsmtFullBath)|is.na(combined$BsmtHalfBath)|is.na(combined$BsmtFinSF1)|is.na(combined$BsmtFinSF2)|is.na(combined$BsmtUnfSF)|is.na(combined$TotalBsmtSF)), c('BsmtQual', 'BsmtFullBath', 'BsmtHalfBath', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF')] #display remaining NAs
+combined$BsmtFullBath[is.na(combined$BsmtFullBath)] <-0
+combined$BsmtHalfBath[is.na(combined$BsmtHalfBath)] <-0
+combined$BsmtFinSF1[is.na(combined$BsmtFinSF1)] <-0
+combined$BsmtFinSF2[is.na(combined$BsmtFinSF2)] <-0
+combined$BsmtUnfSF[is.na(combined$BsmtUnfSF)] <-0
+combined$TotalBsmtSF[is.na(combined$TotalBsmtSF)] <-0
+length(which(is.na(combined$MasVnrType) & is.na(combined$MasVnrArea))) #check if the 23 houses with veneer area NA are also NA in the veneer type
+combined[is.na(combined$MasVnrType) & !is.na(combined$MasVnrArea), c('MasVnrType', 'MasVnrArea')]
+combined$MasVnrType[2611] <- names(sort(table(combined$MasVnrType), decreasing = TRUE))[2] #taking the 2nd value as the 1st is 'none'
+combined$MasVnrType[is.na(combined$MasVnrType)] <- 'None'
+combined$MasVnrType <- as.factor(combined$MasVnrType)
+combined$MasVnrArea[is.na(combined$MasVnrArea)] <-0
+combined$MSZoning[is.na(combined$MSZoning)] <- names(sort(table(combined$MSZoning), decreasing = TRUE))[1]
+combined$MSZoning <- as.factor(combined$MSZoning)
+combined$KitchenQual[is.na(combined$KitchenQual)] <- names(sort(table(combined$KitchenQual), decreasing = TRUE))[1] #replace with most common value
+combined$KitchenQual<-as.factor(combined$KitchenQual)
+table(combined$Utilities) #only one house has different category; useless variable for prediction
+combined$Utilities <- NULL
+combined$Functional[is.na(combined$Functional)] <- names(sort(table(combined$Functional), decreasing = TRUE))[1]
+combined$Functional <- as.factor(combined$Functional)
+combined$Exterior1st[is.na(combined$Exterior1st)] <- names(sort(table(combined$Exterior1st), decreasing = TRUE))[1]
+combined$Exterior1st <- as.factor(combined$Exterior1st)
+combined$Exterior2nd[is.na(combined$Exterior2nd)] <- names(sort(table(combined$Exterior2nd), decreasing = TRUE))[1]
+combined$Exterior2nd <- as.factor(combined$Exterior2nd)
+combined$ExterQual<-as.factor(combined$ExterQual)
+combined$ExterCond<-as.factor(combined$ExterCond)
+combined$Electrical[is.na(combined$Electrical)] <- names(sort(table(combined$Electrical), decreasing = TRUE))[1]
+combined$Electrical <- as.factor(combined$Electrical)
+combined$SaleType[is.na(combined$SaleType)] <- names(sort(table(combined$SaleType), decreasing = TRUE))[1]
+combined$SaleType <- as.factor(combined$SaleType)
+combined$SaleCondition <- as.factor(combined$SaleCondition)
+combined$PoolQC <- as.factor(combined$PoolQC)
+combined$MiscFeature <- as.factor(combined$MiscFeature)
+summary(combined$MiscFeature)
+Character_cols <- names(combined[,sapply(combined, is.character)])
+cor_numVar <- cor(combined_numVar, use="pairwise.complete.obs")
+cor_sorted <- as.matrix(sort(cor_numVar[,'SalePrice'], decreasing = TRUE)) #sort on decreasing correlations with SalePrice
+CorHigh <- names(which(apply(cor_sorted, 1, function(x) abs(x)>0.5))) #select only high corelations
+cor_numVar <- cor_numVar[CorHigh, CorHigh]
+corrplot.mixed(cor_numVar)
+set.seed(2018)
+rF <- randomForest(x=combined[1:1460,-79], y=combined$SalePrice[1:1460], ntree=100,importance=TRUE)
+sapply(combined[1:1460,], function(x) sum(is.na(x)))
+table(combined$BsmtExposure)
+combined$BsmtExposure[is.na(combined$BsmtExposure)] <- names(sort(table(combined$BsmtExposure), decreasing = TRUE))[1]
+imp_rF <- importance(rF)
+imp_df <- data.frame(Variables = row.names(imp_RF), MSE = imp_RF[,1])
+imp_df <- imp_df[order(imp_df$MSE, decreasing = TRUE),]
+ggplot(imp_df, aes(x = reorder(Variables, MSE), y = MSE)) + geom_col() + coord_flip()
+set.seed(27042018)
+train <- combined[!is.na(combined$SalePrice),]
+test <- combined[is.na(combined$SalePrice),]
+fitControl <- trainControl(method = "cv", number = 5)
+m.rf <- train(SalePrice ~ ., 
+                        data = train_small, 
+                        method = "rf", 
+                        trControl = fitControl,
+                        na.action = na.omit,
+                        trace = FALSE)
+rf.pred <- predict(m.rf,test)
+summary(rf.pred)
+save <- data.frame(Id = test_labels, SalePrice = rf.pred)
+write.csv(save, file = "sample_submission.csv", row.names = FALSE)
+m.ranger <- train(
+  SalePrice~.,
+  tuneLength = 5,
+  data = train_small, 
+  method = "ranger",
+  trControl = trainControl(
+    method = "cv", 
+    number = 5, 
+    verboseIter = TRUE
+  )
+)
+ranger.pred <- predict(m.ranger,test)
+summary(ranger.pred)
+save <- data.frame(Id = test_labels, SalePrice = ranger.pred)
+write.csv(save, file = "sample_submission.csv", row.names = FALSE)
+m.glmnet <- train(
+  SalePrice~., 
+  train_small,
+  tuneGrid = expand.grid(
+    alpha = 0:1,
+    lambda = seq(0.0001, 1, length = 20)
+  ),
+  method = "glmnet",
+  trControl = control
+)
+remove_cols <- nearZeroVar(train, names = TRUE, 
+                           freqCut = 2, uniqueCut = 20)
+all_cols <- names(train)
+train_small <- train[ , setdiff(all_cols, remove_cols)]
